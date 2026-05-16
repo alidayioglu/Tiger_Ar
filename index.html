@@ -5,11 +5,27 @@
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     <style>
-      body { margin: 0; overflow: hidden; }
+      body { margin: 0; overflow: hidden; font-family: sans-serif; }
+      /* Kayıt Butonu Tasarımı */
+      #ui-container {
+        position: absolute; bottom: 30px; left: 0; width: 100%; 
+        display: flex; justify-content: center; z-index: 1000; pointer-events: none;
+      }
+      #record-btn {
+        pointer-events: auto; padding: 15px 30px; background-color: #ff3b30; 
+        color: white; border: none; border-radius: 30px; font-size: 16px; 
+        font-weight: bold; box-shadow: 0px 4px 10px rgba(0,0,0,0.3); cursor: pointer;
+        transition: background-color 0.3s;
+      }
     </style>
   </head>
   <body>
-    <a-scene mindar-image="imageTargetSrc: targets.mind;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    
+    <div id="ui-container">
+      <button id="record-btn">🔴 Kayda Başla</button>
+    </div>
+
+    <a-scene mindar-image="imageTargetSrc: targets.mind; filterMinCF: 0.0001; filterBeta: 0.0001; missTolerance: 5;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
       
       <a-assets>
         <video id="ar-video" src="animasyon.webm" preload="auto" loop muted playsinline></video>
@@ -26,15 +42,39 @@
       document.addEventListener("DOMContentLoaded", function() {
         const hedef = document.querySelector('#hedef-sticker');
         const video = document.querySelector('#ar-video');
+        
+        // Cihaz Kontrolü
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isMacSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-        hedef.addEventListener("targetFound", event => {
-          video.play();
+        // Apple cihaz algılanırsa bitişik yazılan yeni mp4 dosyasını yükle
+        if (isIOS || isMacSafari) {
+            video.src = "animasyonios.mp4"; 
+            video.load();
+        }
+
+        // Sticker Algılama Döngüsü
+        hedef.addEventListener("targetFound", event => { video.play(); });
+        hedef.addEventListener("targetLost", event => { video.pause(); });
+
+        /* ---- VİDEO KAYIT SİSTEMİ ---- */
+        const recordBtn = document.getElementById('record-btn');
+        let isRecording = false;
+        let mediaRecorder;
+        let recordedChunks = [];
+        
+        const mergeCanvas = document.createElement('canvas');
+        const mergeCtx = mergeCanvas.getContext('2d');
+        let drawLoop;
+
+        recordBtn.addEventListener('click', () => {
+          if (!isRecording) {
+            startRecording();
+          } else {
+            stopRecording();
+          }
         });
 
-        hedef.addEventListener("targetLost", event => {
-          video.pause();
-        });
-      });
-    </script>
-  </body>
-</html>
+        function startRecording() {
+          const aframeCanvas = document.querySelector('.a-canvas');
+          let mindar
