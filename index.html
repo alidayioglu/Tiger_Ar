@@ -6,7 +6,20 @@
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     <style>
       body { margin: 0; overflow: hidden; font-family: sans-serif; }
-      /* Kayıt Butonu Tasarımı */
+      
+      /* AR Başlangıç Ekranı (Video izni almak için zorunlu) */
+      #start-screen {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0, 0, 0, 0.9); z-index: 9999;
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+      }
+      #start-btn {
+        padding: 20px 40px; font-size: 20px; font-weight: bold; color: white;
+        background-color: #007aff; border: none; border-radius: 30px; cursor: pointer;
+        box-shadow: 0px 4px 15px rgba(0, 122, 255, 0.5);
+      }
+      
+      /* Kayıt Butonu */
       #ui-container {
         position: absolute; bottom: 30px; left: 0; width: 100%; 
         display: flex; justify-content: center; z-index: 1000; pointer-events: none;
@@ -15,50 +28,77 @@
         pointer-events: auto; padding: 15px 30px; background-color: #ff3b30; 
         color: white; border: none; border-radius: 30px; font-size: 16px; 
         font-weight: bold; box-shadow: 0px 4px 10px rgba(0,0,0,0.3); cursor: pointer;
-        transition: background-color 0.3s;
       }
     </style>
   </head>
   <body>
     
-    <div id="ui-container">
-      <button id="record-btn">🔴 Kayda Başla</button>
+    <div id="start-screen">
+      <button id="start-btn">Kamerayı Aç ve Başla</button>
+      <p style="color:white; margin-top:20px; font-size:14px;">(Lütfen tarayıcının kamera iznine onay verin)</p>
     </div>
 
-    <a-scene mindar-image="imageTargetSrc: targets.mind; filterMinCF: 0.0001; filterBeta: 0.0001; missTolerance: 5;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    <div id="ui-container">
+      <button id="record-btn" style="display:none;">🔴 Kayda Başla</button>
+    </div>
+
+    <a-scene mindar-image="imageTargetSrc: targets.mind; filterMinCF: 0.0001; filterBeta: 0.0001; missTolerance: 5;" color-space="sRGB" renderer="colorManagement: true; preserveDrawingBuffer: true;" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
       
       <a-assets>
-        <video id="ar-video" src="animasyon.webm" preload="auto" loop muted playsinline></video>
+        <video id="vid-android" src="animasyon.webm" preload="auto" loop muted playsinline webkit-playsinline></video>
+        <video id="vid-ios" src="animasyonios.mp4" preload="auto" loop muted playsinline webkit-playsinline></video>
       </a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity mindar-image-target="targetIndex: 0" id="hedef-sticker">
-        <a-video src="#ar-video" position="0 0 0" height="1" width="1" rotation="0 0 0"></a-video>
+        <a-video id="ar-plane" src="#vid-android" position="0 0 0" height="1" width="1" rotation="0 0 0"></a-video>
       </a-entity>
     </a-scene>
 
     <script>
       document.addEventListener("DOMContentLoaded", function() {
-        const hedef = document.querySelector('#hedef-sticker');
-        const video = document.querySelector('#ar-video');
         
-        // Cihaz Kontrolü
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        const isMacSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        // 1. Cihazın Apple (iOS/Mac) olup olmadığını kesin olarak tespit et
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isApple = isIOS || isSafari;
 
-        // Apple cihaz algılanırsa bitişik yazılan yeni mp4 dosyasını yükle
-        if (isIOS || isMacSafari) {
-            video.src = "animasyonios.mp4"; 
-            video.load();
+        const arPlane = document.querySelector('#ar-plane');
+        let targetVideo = document.querySelector('#vid-android');
+
+        // Eğer cihaz Apple ise, yüzeyi ve oynatılacak videoyu MP4'e çevir
+        if (isApple) {
+            arPlane.setAttribute('src', '#vid-ios');
+            targetVideo = document.querySelector('#vid-ios');
         }
 
-        // Sticker Algılama Döngüsü
-        hedef.addEventListener("targetFound", event => { video.play(); });
-        hedef.addEventListener("targetLost", event => { video.pause(); });
-
-        /* ---- VİDEO KAYIT SİSTEMİ ---- */
+        // 2. BAŞLAT BUTONU SİSTEMİ (Video Kilidini Kırmak İçin)
+        const startBtn = document.getElementById('start-btn');
+        const startScreen = document.getElementById('start-screen');
         const recordBtn = document.getElementById('record-btn');
+
+        startBtn.addEventListener('click', () => {
+          // Başlangıç ekranını gizle, kayıt butonunu göster
+          startScreen.style.display = 'none';
+          recordBtn.style.display = 'block';
+          
+          // Videoyu 1 milisaniye oynatıp durdurarak tarayıcıdan "Oynatma İznini" al
+          targetVideo.play().then(() => {
+            targetVideo.pause();
+          }).catch(e => console.log("Video izni hatası:", e));
+        });
+
+        // 3. STİCKER BULUNUNCA VİDEOYU OYNATMA
+        const hedef = document.querySelector('#hedef-sticker');
+        hedef.addEventListener("targetFound", event => { 
+            targetVideo.play(); 
+        });
+        hedef.addEventListener("targetLost", event => { 
+            targetVideo.pause(); 
+        });
+
+        // 4. EKRAN KAYIT SİSTEMİ
         let isRecording = false;
         let mediaRecorder;
         let recordedChunks = [];
@@ -68,6 +108,12 @@
         let drawLoop;
 
         recordBtn.addEventListener('click', () => {
+          // Apple cihaz ise doğrudan uyar ve işlemi iptal et
+          if (isApple) {
+            alert("Apple'ın güvenlik kuralları gereği iPhone/iPad cihazlarda web üzerinden ekran kaydı alınamamaktadır. Lütfen telefonunuzun kendi 'Ekran Kaydedici' özelliğini kullanın.");
+            return;
+          }
+
           if (!isRecording) {
             startRecording();
           } else {
@@ -77,4 +123,70 @@
 
         function startRecording() {
           const aframeCanvas = document.querySelector('.a-canvas');
-          let mindar
+          let mindarVideo = null;
+          
+          document.querySelectorAll('video').forEach(v => {
+            if (v.id !== 'vid-android' && v.id !== 'vid-ios') mindarVideo = v;
+          });
+
+          if (!mindarVideo || !aframeCanvas) {
+            alert("Kamera henüz tam yüklenmedi.");
+            return;
+          }
+
+          mergeCanvas.width = aframeCanvas.width;
+          mergeCanvas.height = aframeCanvas.height;
+
+          try {
+            const stream = mergeCanvas.captureStream(30);
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+          } catch (e) {
+            alert("Tarayıcınız kayıt desteklemiyor.");
+            return;
+          }
+
+          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+          mediaRecorder.onstop = exportVideo;
+          mediaRecorder.start();
+
+          isRecording = true;
+          recordBtn.innerHTML = "⬛ Kaydı Durdur";
+          recordBtn.style.backgroundColor = "#333";
+
+          function drawFrame() {
+            if (!isRecording) return;
+            mergeCtx.clearRect(0, 0, mergeCanvas.width, mergeCanvas.height);
+            mergeCtx.drawImage(mindarVideo, 0, 0, mergeCanvas.width, mergeCanvas.height);
+            mergeCtx.drawImage(aframeCanvas, 0, 0, mergeCanvas.width, mergeCanvas.height);
+            drawLoop = requestAnimationFrame(drawFrame);
+          }
+          drawFrame();
+        }
+
+        function stopRecording() {
+          isRecording = false;
+          mediaRecorder.stop();
+          cancelAnimationFrame(drawLoop);
+          recordBtn.innerHTML = "🔴 Kayda Başla";
+          recordBtn.style.backgroundColor = "#ff3b30";
+        }
+
+        function exportVideo() {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = 'NUBA-Sticker-Kayit.webm'; 
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+          recordedChunks = [];
+        }
+      });
+    </script>
+  </body>
+</html>
